@@ -3,12 +3,15 @@ from fastapi import FastAPI, Response, status, HTTPException, Depends
 from fastapi.params import Body
 from pydantic import BaseModel
 from random import randrange
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 from sqlalchemy.orm import Session
-from app import models, schemas
+from app import models, schemas, utils
 from app.database import engine, get_db
+
+
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -46,6 +49,7 @@ def find_index_post(id):
     for i, p in enumerate(my_posts):
         if p['id'] == id:
             return i
+
 
 
 @app.get("/")
@@ -155,3 +159,28 @@ def update_post(id: int, post: schemas.PostCreate, db: Session = Depends(get_db)
     # post_dict["id"] = id
     # my_posts[index] = post_dict
     return post_query.first()
+
+
+@app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.UserOut)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+
+    # hash the password - user.password
+    hash_password = utils.hash_password(user.password)
+    user.password = hash_password
+
+    new_user = models.User(**user.model_dump())
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
+@app.get('/users/{id}', response_model=schemas.UserOut)
+def get_user(id: int, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(id == models.User.id).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User with id: {id} does not exist!")
+
+    return user
